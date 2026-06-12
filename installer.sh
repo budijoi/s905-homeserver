@@ -137,3 +137,92 @@ echo
 echo "Next:"
 echo "3/9 ZRAM + Swap"
 echo
+
+apt update -qq
+apt install -y zram-tools
+
+cat >/etc/default/zramswap <<EOF
+ALGO=zstd
+PERCENT=50
+PRIORITY=100
+EOF
+
+systemctl restart zramswap.service
+
+ok "ZRAM Configured"
+
+if [ ! -f /swapfile ]; then
+
+    fallocate -l 1G /swapfile
+
+    chmod 600 /swapfile
+
+    mkswap /swapfile
+
+fi
+
+swapon /swapfile
+
+grep -q "/swapfile" /etc/fstab || \
+echo "/swapfile none swap sw 0 0" >> /etc/fstab
+
+ok "Swapfile 1GB Berhasil Dibuat"
+
+echo
+echo "Memory Status"
+echo "-------------"
+
+free -h
+
+echo
+echo
+echo "[4/9] S905X Optimization"
+echo
+cat >/etc/sysctl.d/99-budijoi.conf <<EOF
+
+vm.swappiness=10
+vm.vfs_cache_pressure=50
+
+net.core.somaxconn=1024
+
+EOF
+
+sysctl --system >/dev/null 2>&1
+
+ok "Kernel Parameters Applied"
+
+mkdir -p /etc/systemd/journald.conf.d
+
+cat >/etc/systemd/journald.conf.d/budijoi.conf <<EOF
+[Journal]
+SystemMaxUse=100M
+RuntimeMaxUse=50M
+EOF
+
+systemctl restart systemd-journald
+
+ok "Journal Limited"
+
+grep -q "/tmp tmpfs" /etc/fstab || \
+echo "tmpfs /tmp tmpfs defaults,noatime,nosuid,size=128M 0 0" >> /etc/fstab
+
+ok "Tmpfs Enabled"
+
+if [ -d /sys/devices/system/cpu/cpufreq/policy0 ]; then
+
+    echo ondemand \
+    > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+
+    ok "CPU Governor Set"
+fi
+
+echo
+echo "Optimization Summary"
+echo "--------------------"
+
+echo "ZRAM      : Enabled"
+echo "Swapfile  : 1 GB"
+echo "Swappiness: 10"
+echo "Cache     : 50"
+
+echo
